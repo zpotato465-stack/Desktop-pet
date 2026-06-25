@@ -5,7 +5,12 @@ import sys
 import threading
 import webbrowser
 
+# Source clip the duck plays while hunting for a file.
 SEARCH_MUSIC_URL = "https://youtu.be/lV28xl-YKw4?si=SbzLX-ehjeCRR74d"
+VIDEO_ID = "lV28xl-YKw4"
+# Top-level YouTube watch navigation autoplays WITH sound (allowed by browsers,
+# unlike muted iframe embeds), so this guarantees the music actually starts.
+WATCH_URL_AUTOPLAY = f"https://www.youtube.com/watch?v={VIDEO_ID}&autoplay=1"
 
 _pygame_available = False
 _mixer_initialized = False
@@ -16,7 +21,6 @@ try:
 except ImportError:
     pass
 
-_current_thread: threading.Thread | None = None
 _stop_flag = threading.Event()
 
 
@@ -31,31 +35,49 @@ def _ensure_mixer():
 
 
 def play_search_music():
-    """Play the search music. Tries pygame local cache, falls back to browser."""
+    """Play the search music.
+
+    Priority:
+      1. Locally cached mp3 (instant, plays through the app via pygame)
+      2. Download with yt-dlp if available, then play locally
+      3. Browser fallback — opens the YouTube watch page, which autoplays
+         with sound on a fresh top-level navigation.
+    """
     _stop_flag.clear()
-    thread = threading.Thread(target=_play_thread, daemon=True)
-    thread.start()
+    threading.Thread(target=_play_thread, daemon=True).start()
 
 
 def _play_thread():
     local_path = _get_cached_audio_path()
     if local_path and os.path.exists(local_path):
         _play_local(local_path)
-    else:
-        # Try to download with yt-dlp
-        downloaded = _try_download_audio()
-        if downloaded and os.path.exists(downloaded):
-            _play_local(downloaded)
-        else:
-            # Final fallback: open in browser
-            webbrowser.open(SEARCH_MUSIC_URL)
+        return
+
+    downloaded = _try_download_audio()
+    if downloaded and os.path.exists(downloaded):
+        _play_local(downloaded)
+        return
+
+    # Final fallback: browser autoplay.
+    _open_browser_autoplay()
+
+
+def _open_browser_autoplay():
+    """Open the YouTube watch page so it starts playing immediately."""
+    try:
+        webbrowser.open(WATCH_URL_AUTOPLAY, new=2)
+    except Exception:
+        try:
+            webbrowser.open(SEARCH_MUSIC_URL, new=2)
+        except Exception:
+            pass
 
 
 def _get_cache_dir():
     if sys.platform == 'darwin':
         base = os.path.expanduser('~/Library/Application Support/DuckPet')
     elif sys.platform == 'win32':
-        base = os.path.join(os.environ.get('APPDATA', '~'), 'DuckPet')
+        base = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'DuckPet')
     else:
         base = os.path.expanduser('~/.config/DuckPet')
     os.makedirs(base, exist_ok=True)
@@ -67,7 +89,7 @@ def _get_cached_audio_path():
 
 
 def _try_download_audio():
-    """Attempt to download audio using yt-dlp if available."""
+    """Attempt to download audio using yt-dlp if it's installed."""
     out_path = _get_cached_audio_path()
     try:
         import subprocess
@@ -75,11 +97,11 @@ def _try_download_audio():
             ['yt-dlp', '-x', '--audio-format', 'mp3',
              '-o', out_path.replace('.mp3', '.%(ext)s'),
              '--no-playlist', '-q', SEARCH_MUSIC_URL],
-            capture_output=True, timeout=30
+            capture_output=True, timeout=45
         )
         if result.returncode == 0 and os.path.exists(out_path):
             return out_path
-    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+    except Exception:
         pass
     return None
 
@@ -87,6 +109,9 @@ def _try_download_audio():
 def _play_local(path: str):
     _ensure_mixer()
     if not _pygame_available or not _mixer_initialized:
+        # Couldn't init audio device — fall back to the browser so the
+        # user still hears the track.
+        _open_browser_autoplay()
         return
     try:
         pygame.mixer.music.load(path)
@@ -95,7 +120,7 @@ def _play_local(path: str):
             pygame.time.wait(200)
         pygame.mixer.music.stop()
     except Exception:
-        pass
+        _open_browser_autoplay()
 
 
 def stop_music():

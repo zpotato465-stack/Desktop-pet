@@ -1,0 +1,110 @@
+name: Build & Release Duck Pet
+
+# Trigger on any version tag, e.g. v1.0.0
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:   # allow manual runs from the Actions tab
+
+permissions:
+  contents: write       # needed to create the release & upload assets
+
+jobs:
+  # ── Windows .exe ─────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build .exe
+        run: pyinstaller --clean --noconfirm build_windows.spec
+
+      - name: Zip the .exe
+        run: |
+          cd dist
+          Compress-Archive -Path "duck that carries you over a disproportionately small gap.exe" -DestinationPath "duck-pet-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: dist/duck-pet-windows.zip
+
+  # ── macOS .app + .dmg ────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build .app
+        run: pyinstaller --clean --noconfirm build_mac.spec
+
+      - name: Create .dmg
+        run: |
+          cd dist
+          APP="duck that carries you over a disproportionately small gap.app"
+          hdiutil create -volname "Duck Pet" \
+            -srcfolder "$APP" -ov -format UDZO \
+            "duck that carries you over a disproportionately small gap.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: "dist/duck that carries you over a disproportionately small gap.dmg"
+
+  # ── Publish the release ──────────────────────────────────────────────────
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Show downloaded files
+        run: find artifacts -type f
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "🦆 Duck Pet ${{ github.ref_name }}"
+          body: |
+            # Duck That Carries You Over A Disproportionately Small Gap 🦆
+
+            A pixel-art duck desktop pet powered by Google Gemini.
+
+            ## Downloads
+            - **Windows:** `duck-pet-windows.zip` → unzip → run the `.exe`
+            - **macOS:** `*.dmg` → open → drag the app to Applications
+
+            ## First run
+            You'll be asked for a free [Gemini API key](https://aistudio.google.com).
+
+            ### macOS note
+            The app isn't notarized, so the first launch needs:
+            **System Settings → Privacy & Security → "Open Anyway"**,
+            and **Screen Recording** permission so the duck can peek at your screen.
+          files: |
+            artifacts/windows-build/duck-pet-windows.zip
+            artifacts/macos-build/duck that carries you over a disproportionately small gap.dmg
+          draft: false
+          prerelease: false
