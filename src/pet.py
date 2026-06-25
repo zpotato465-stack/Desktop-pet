@@ -2,6 +2,7 @@
 
 import os
 import sys
+import math
 import random
 import threading
 from typing import Optional
@@ -10,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from PySide6.QtWidgets import QWidget, QApplication, QMenu, QSystemTrayIcon
-from PySide6.QtCore import Qt, QTimer, QPoint, Signal, QObject
+from PySide6.QtCore import Qt, QTimer, QPoint, QRectF, Signal, QObject
 from PySide6.QtGui import (QPainter, QPixmap, QImage, QColor, QFont,
                             QPainterPath, QPen, QBrush, QIcon, QCursor,
                             QAction)
@@ -272,7 +273,7 @@ class DuckPet(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         # Choose sprite set
         draw_state = {
@@ -286,15 +287,38 @@ class DuckPet(QWidget):
         frame_idx = self._tick // self._anim_speed
         sprite = self.sprites.get(draw_state, frame_idx)
 
+        # Gentle vertical "breathing" bob so the duck feels alive
+        bob = 0.0
+        if self.state == "idle":
+            bob = math.sin(self._tick * 0.12) * 2.4
+        elif self.state == "sleep":
+            bob = math.sin(self._tick * 0.05) * 1.6
+        elif self.state == "search":
+            bob = abs(math.sin(self._tick * 0.4)) * 3.0   # eager waddle hop
+
         # Centre the sprite in the window
         x = (self.width() - sprite.width()) // 2
-        y = WIN_PAD_Y + (self.sprites.duck_height - sprite.height())
+        base_y = WIN_PAD_Y + (self.sprites.duck_height - sprite.height())
+        y = base_y - bob
 
-        painter.drawPixmap(x, y, sprite)
+        # Soft grounding shadow at the duck's feet (shrinks as it lifts up)
+        foot_y = WIN_PAD_Y + self.sprites.duck_height + 5
+        lift = max(0.0, bob)
+        shadow_w = sprite.width() * 0.60 * (1.0 - lift * 0.03)
+        shadow_h = shadow_w * 0.20
+        cx = self.width() / 2.0
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 55))
+        painter.drawEllipse(QRectF(cx - shadow_w / 2, foot_y - shadow_h / 2,
+                                   shadow_w, shadow_h))
+
+        # Pixel-art sprite: keep it crisp (no smoothing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+        painter.drawPixmap(int(x), int(y), sprite)
 
         # Floating Zs while sleeping
         if self.state == "sleep":
-            self._paint_zs(painter, x + sprite.width() - 10, y)
+            self._paint_zs(painter, int(x + sprite.width() - 10), int(y))
 
         # Searching sparkle effect
         if self.state == "search":

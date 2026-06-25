@@ -1,5 +1,7 @@
 """First-run setup and settings dialog."""
 
+import os
+
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QFrame
@@ -73,13 +75,36 @@ class SetupDialog(QDialog):
         self.setStyleSheet(STYLE)
         self._build_ui(current_key)
 
+    def _load_duck(self, size: int):
+        try:
+            from main import get_resource_path
+            path = get_resource_path(os.path.join("assets", "duck_wave_proc.png"))
+            px = QPixmap(path)
+            if not px.isNull():
+                return px.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+        except Exception:
+            pass
+        return None
+
     def _build_ui(self, current_key: str):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(16)
+        layout.setContentsMargins(32, 24, 32, 28)
+        layout.setSpacing(14)
 
-        # Duck emoji + title
-        title = QLabel("🦆  Duck Desktop Pet")
+        # Actual duck sprite (falls back to emoji)
+        duck_img = QLabel()
+        duck_img.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        px = self._load_duck(84)
+        if px is not None and not px.isNull():
+            duck_img.setPixmap(px)
+        else:
+            duck_img.setText("🦆")
+            duck_img.setStyleSheet("font-size: 56px;")
+        layout.addWidget(duck_img)
+
+        # Title
+        title = QLabel("Duck Desktop Pet")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)

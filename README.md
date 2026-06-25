@@ -6,6 +6,8 @@ you're doing, chats with you, and hunts down files (with theme music).
 
 ![Duck pet on the desktop](docs/demo.png)
 
+<p align="center"><img src="docs/chat.png" width="360" alt="Chat with Quackers"></p>
+
 ---
 
 ## ▶️ What to run

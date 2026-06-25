@@ -1,18 +1,26 @@
-"""Speech bubble widget for the duck pet."""
+"""Speech bubble widget for the duck pet — polished comic style."""
 
 from PySide6.QtWidgets import QWidget, QApplication
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, QRectF, QPoint
 from PySide6.QtGui import (QPainter, QColor, QPainterPath, QPen, QBrush,
-                            QFont, QFontMetrics)
+                            QFont, QFontMetrics, QLinearGradient)
 
-BUBBLE_BG = QColor(255, 253, 220, 235)
-BUBBLE_BORDER = QColor(200, 170, 60, 255)
-TEXT_COLOR = QColor(40, 30, 10)
-FONT_FAMILY = "Arial"
+# Warm, duck-themed palette
+BUBBLE_TOP = QColor(255, 255, 248)
+BUBBLE_BOTTOM = QColor(255, 246, 209)
+BUBBLE_BORDER = QColor(232, 178, 58)
+SHADOW = QColor(40, 30, 10, 70)
+TEXT_COLOR = QColor(60, 45, 15)
+
+FONT_FAMILY = "Verdana"
 FONT_SIZE = 11
 MAX_WIDTH = 280
-PADDING = 12
+PAD_X = 16
+PAD_Y = 12
 POINTER_H = 16
+POINTER_W = 18
+MARGIN = 14          # room for the drop shadow / glow
+RADIUS = 16
 
 
 class SpeechBubble(QWidget):
@@ -21,6 +29,7 @@ class SpeechBubble(QWidget):
         self.text = text
         self.duck = parent_duck
         self._lines: list[str] = []
+        self._bubble_w = 0
         self._bubble_h = 0
 
         self.setWindowFlags(
@@ -38,13 +47,14 @@ class SpeechBubble(QWidget):
 
         self.setWindowOpacity(0.0)
         self._fade_in = QPropertyAnimation(self, b"windowOpacity")
-        self._fade_in.setDuration(200)
+        self._fade_in.setDuration(220)
         self._fade_in.setStartValue(0.0)
         self._fade_in.setEndValue(1.0)
         self._fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     def _compute_layout(self):
         font = QFont(FONT_FAMILY, FONT_SIZE)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         fm = QFontMetrics(font)
         self._font = font
         self._fm = fm
@@ -54,9 +64,8 @@ class SpeechBubble(QWidget):
         current = ""
         for word in words:
             test = (current + " " + word).strip()
-            if fm.horizontalAdvance(test) > MAX_WIDTH - PADDING * 2:
-                if current:
-                    lines.append(current)
+            if fm.horizontalAdvance(test) > MAX_WIDTH - PAD_X * 2 and current:
+                lines.append(current)
                 current = word
             else:
                 current = test
@@ -66,63 +75,65 @@ class SpeechBubble(QWidget):
             lines = [self.text]
         self._lines = lines
 
-        content_w = max(fm.horizontalAdvance(l) for l in lines) + PADDING * 2
-        content_h = len(lines) * fm.height() + PADDING * 2
-        self._bubble_h = content_h
-        total_h = content_h + POINTER_H
+        self._bubble_w = max(fm.horizontalAdvance(l) for l in lines) + PAD_X * 2
+        self._bubble_h = len(lines) * fm.height() + PAD_Y * 2
 
-        self.resize(content_w, total_h)
+        total_w = self._bubble_w + MARGIN * 2
+        total_h = self._bubble_h + POINTER_H + MARGIN * 2
+        self.resize(total_w, total_h)
 
     def _position(self):
         duck_global = self.duck.mapToGlobal(self.duck.rect().topLeft())
         duck_cx = duck_global.x() + self.duck.width() // 2
 
         bx = duck_cx - self.width() // 2
-        by = duck_global.y() - self.height() - 6
+        by = duck_global.y() - self.height() + MARGIN
 
         screen = QApplication.primaryScreen().geometry()
         bx = max(6, min(bx, screen.width() - self.width() - 6))
         by = max(6, by)
-
         self.move(bx, by)
+        # Remember where the pointer should aim (relative to bubble window)
+        self._pointer_x = max(MARGIN + RADIUS + POINTER_W,
+                              min(duck_cx - bx, self.width() - MARGIN - RADIUS))
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw bubble body
-        body = QRect(0, 0, self.width(), self._bubble_h)
-        path = QPainterPath()
-        path.addRoundedRect(body, 10, 10)
+        body = QRectF(MARGIN, MARGIN, self._bubble_w, self._bubble_h)
+        px = self._pointer_x
+        py = MARGIN + self._bubble_h
 
-        painter.setBrush(QBrush(BUBBLE_BG))
-        painter.setPen(QPen(BUBBLE_BORDER, 2))
-        painter.drawPath(path)
+        def build_path(dx=0, dy=0):
+            path = QPainterPath()
+            path.addRoundedRect(body.translated(dx, dy), RADIUS, RADIUS)
+            tri = QPainterPath()
+            tri.moveTo(px - POINTER_W / 2 + dx, py + dy)
+            tri.lineTo(px + POINTER_W / 2 + dx, py + dy)
+            tri.lineTo(px + dx, py + POINTER_H + dy)
+            tri.closeSubpath()
+            return path.united(tri)
 
-        # Draw pointer (triangle at bottom center)
-        px = self.width() // 2
-        py = self._bubble_h
-        tri = QPainterPath()
-        tri.moveTo(px - 8, py)
-        tri.lineTo(px + 8, py)
-        tri.lineTo(px, py + POINTER_H)
-        tri.closeSubpath()
-
-        painter.setBrush(QBrush(BUBBLE_BG))
+        # Drop shadow
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPath(tri)
+        painter.setBrush(QBrush(SHADOW))
+        painter.drawPath(build_path(0, 4))
 
-        # Border for pointer sides only
-        painter.setPen(QPen(BUBBLE_BORDER, 2))
-        painter.drawLine(px - 8, py, px, py + POINTER_H)
-        painter.drawLine(px + 8, py, px, py + POINTER_H)
+        # Bubble body (vertical gradient)
+        grad = QLinearGradient(0, MARGIN, 0, MARGIN + self._bubble_h)
+        grad.setColorAt(0.0, BUBBLE_TOP)
+        grad.setColorAt(1.0, BUBBLE_BOTTOM)
+        painter.setBrush(QBrush(grad))
+        painter.setPen(QPen(BUBBLE_BORDER, 2.5))
+        painter.drawPath(build_path())
 
-        # Draw text
+        # Text
         painter.setPen(TEXT_COLOR)
         painter.setFont(self._font)
-        y = PADDING + self._fm.ascent()
+        y = MARGIN + PAD_Y + self._fm.ascent()
         for line in self._lines:
-            painter.drawText(PADDING, y, line)
+            painter.drawText(int(MARGIN + PAD_X), int(y), line)
             y += self._fm.height()
 
         painter.end()
@@ -132,12 +143,12 @@ class SpeechBubble(QWidget):
         self._fade_in.start()
 
     def reposition(self):
-        """Call this if the duck moves while the bubble is visible."""
         self._position()
+        self.update()
 
     def close_animated(self, callback=None):
         fade = QPropertyAnimation(self, b"windowOpacity")
-        fade.setDuration(300)
+        fade.setDuration(280)
         fade.setStartValue(self.windowOpacity())
         fade.setEndValue(0.0)
         fade.setEasingCurve(QEasingCurve.Type.InCubic)
