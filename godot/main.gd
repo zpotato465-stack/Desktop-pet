@@ -290,7 +290,9 @@ func _on_settings_id(id: int) -> void:
 func _on_menu_id(id: int) -> void:
 	match id:
 		1: pet()
-		2: do_flip()
+		2:
+			if state == State.SLEEP: wake()
+			else: do_flip()
 		3: _say(QUACK_LINES[randi() % QUACK_LINES.size()])
 		4:
 			if state == State.SLEEP: wake()
@@ -572,12 +574,14 @@ func pet() -> void:
 		juice_busy = true
 		var prev_state := state
 		state = State.JUICE
-		var tw := create_tween()
+		# Track as air_tween so _kill_air() cancels it — otherwise its state
+		# restore below could fire mid-drag and yank the state machine.
+		air_tween = create_tween()
 		for i in range(3):
-			tw.tween_property(pivot, "rotation", 0.12, 0.07)
-			tw.tween_property(pivot, "rotation", -0.12, 0.07)
-		tw.tween_property(pivot, "rotation", 0.0, 0.08)
-		tw.tween_callback(func():
+			air_tween.tween_property(pivot, "rotation", 0.12, 0.07)
+			air_tween.tween_property(pivot, "rotation", -0.12, 0.07)
+		air_tween.tween_property(pivot, "rotation", 0.0, 0.08)
+		air_tween.tween_callback(func():
 			juice_busy = false
 			if state == State.JUICE:
 				state = prev_state if prev_state != State.JUICE else State.IDLE
