@@ -1,0 +1,134 @@
+name: Godot Duck — Test, Screenshot & Release
+
+on:
+  push:
+    branches: [godot]
+    paths: ['godot/**', '.github/workflows/godot-ci.yml']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish a release with this tag (empty = test only)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: '4.3'
+  GODOT_RELEASE: '4.3-stable'
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_RELEASE }}-v1
+
+      - name: Download Godot + export templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot-bin
+          cd ~/godot-bin
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv Godot_v${GODOT_RELEASE}_linux.x86_64 godot
+          chmod +x godot
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          mkdir -p ~/.local/share/godot/export_templates
+          unzip -q templates.tpz -d ~/.local/share/godot/export_templates
+          mv ~/.local/share/godot/export_templates/templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Import project
+        run: ~/godot-bin/godot --headless --path godot --import || true
+
+      - name: Run smoke tests (headless)
+        run: |
+          ~/godot-bin/godot --headless --path godot -s res://tests/smoke.gd 2>&1 | tee smoke.log
+          grep -q "ALL CHECKS PASSED" smoke.log
+
+      - name: Render real screenshots (xvfb + software GL)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb mesa-utils
+          export SHOTS_DIR=$PWD/shots
+          xvfb-run -a -s "-screen 0 800x600x24" \
+            ~/godot-bin/godot --path godot --rendering-driver opengl3 -s res://tests/shots.gd 2>&1 | tee shots.log || true
+          ls -la shots/ || echo "no shots rendered"
+
+      - name: Commit screenshots back to branch
+        if: github.ref == 'refs/heads/godot'
+        run: |
+          if ls shots/*.png >/dev/null 2>&1; then
+            mkdir -p godot/docs/shots
+            cp shots/*.png godot/docs/shots/
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add godot/docs/shots
+            if ! git diff --cached --quiet; then
+              git commit -m "CI: update rendered duck screenshots [skip ci]"
+              git pull --rebase origin godot || true
+              git push origin HEAD:godot
+            fi
+          fi
+
+      - name: Export Windows .exe
+        run: |
+          mkdir -p dist
+          ~/godot-bin/godot --headless --path godot --export-release "Windows Desktop" ../dist/duck-godot-windows.exe
+          ls -la dist/
+
+      - name: Export macOS .zip
+        run: |
+          ~/godot-bin/godot --headless --path godot --export-release "macOS" ../dist/duck-godot-macos.zip
+          ls -la dist/
+
+      - name: Zip Windows build
+        run: |
+          cd dist
+          zip -q duck-godot-windows.zip duck-godot-windows.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-builds
+          path: |
+            dist/duck-godot-windows.zip
+            dist/duck-godot-macos.zip
+
+      - name: Publish release
+        if: github.event.inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: "🦆 Duck Pet (Godot Edition) ${{ github.event.inputs.release_tag }}"
+          target_commitish: ${{ github.sha }}
+          body: |
+            # Duck Pet — Godot Edition 🦆✨
+
+            The ANIMATION-FIRST version: squash & stretch, waddling, hops,
+            backflips, and real throw physics (grab the duck and YEET it —
+            it tumbles, bounces, and complains). No AI, no accounts, no keys —
+            just a very alive duck.
+
+            ## Downloads
+            - **Windows:** `duck-godot-windows.zip` → unzip → run the `.exe`
+            - **macOS:** `duck-godot-macos.zip` → unzip → move the app to Applications
+              (unsigned: right-click → Open on first launch)
+
+            ## Play with it
+            | Action | Result |
+            |---|---|
+            | Click | excited hop + quack |
+            | Double-click | pet → hearts |
+            | Drag & release fast | THROW physics, bouncing, tumbling |
+            | Right-click | menu: tricks, nap, size/speed/gravity settings |
+          files: |
+            dist/duck-godot-windows.zip
+            dist/duck-godot-macos.zip
