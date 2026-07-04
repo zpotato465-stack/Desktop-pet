@@ -415,13 +415,13 @@ func _tick_drag(delta: float) -> void:
 		var dt_ms: float = maxf(1.0, float(c[0]) - float(a[0]))
 		vx = (c[1].x - a[1].x) / dt_ms * 1000.0
 	var b := _base_scale()
-	pivot.rotation = lerpf(pivot.rotation, clampf(-vx * 0.0006, -0.4, 0.4), 10.0 * delta)
+	sprite.rotation = lerpf(sprite.rotation, clampf(-vx * 0.0006, -0.4, 0.4), 10.0 * delta)
 	pivot.scale = pivot.scale.lerp(Vector2(b * 0.93, b * 1.08), 10.0 * delta)
 
 func _tick_fall(delta: float) -> void:
 	vel.y += GRAVITY * delta
 	fpos += vel * delta
-	pivot.rotation += ang_vel * delta
+	sprite.rotation += ang_vel * delta   # tumble around the body's center
 
 	var w := get_window()
 	var min_x := float(usable.position.x)
@@ -456,10 +456,10 @@ func _land_settle() -> void:
 	state = State.IDLE
 	idle_for = 0.0
 	_spawn_dust(4)
-	pivot.rotation = wrapf(pivot.rotation, -PI, PI)
+	sprite.rotation = wrapf(sprite.rotation, -PI, PI)
 	var tw := create_tween()
 	tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(pivot, "rotation", 0.0, 0.35)
+	tw.tween_property(sprite, "rotation", 0.0, 0.35)
 	var b := _base_scale()
 	tw.parallel().tween_property(pivot, "scale", Vector2(b, b), 0.35)
 	sprite.play("idle")
@@ -546,10 +546,12 @@ func do_flip() -> void:
 	air_tween.tween_property(pivot, "scale", Vector2(b * 1.14, b * 0.84), 0.11)
 	air_tween.tween_property(pivot, "scale", Vector2(b * 0.9, b * 1.12), 0.08)
 	air_tween.parallel().tween_property(pivot, "position:y", FEET_Y - 56.0, 0.26).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	air_tween.parallel().tween_property(pivot, "rotation", TAU * dir, 0.50)
+	# Spin the SPRITE (centered) so the flip rotates around the duck's body,
+	# not its feet — feet-pivot flips read as "tipping over", not acrobatics.
+	air_tween.parallel().tween_property(sprite, "rotation", TAU * dir, 0.50)
 	air_tween.tween_property(pivot, "position:y", FEET_Y, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	air_tween.tween_callback(func():
-		pivot.rotation = 0.0
+		sprite.rotation = 0.0
 		_spawn_dust(5)
 	)
 	air_tween.tween_property(pivot, "scale", Vector2(b * 1.24, b * 0.76), 0.07)
@@ -607,6 +609,7 @@ func _kill_air() -> void:
 	juice_busy = false
 	pivot.position = Vector2(CENTER_X, FEET_Y)
 	pivot.rotation = 0.0
+	sprite.rotation = 0.0
 	var b := _base_scale()
 	pivot.scale = Vector2(b, b)
 
@@ -680,7 +683,7 @@ func _end_drag() -> void:
 		var b := _base_scale()
 		var tw := create_tween()
 		tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(pivot, "rotation", 0.0, 0.3)
+		tw.tween_property(sprite, "rotation", 0.0, 0.3)
 		tw.parallel().tween_property(pivot, "scale", Vector2(b, b), 0.3)
 
 func _notification(what: int) -> void:

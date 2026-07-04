@@ -58,7 +58,7 @@ func _process(_delta: float) -> bool:
 			_check(duck.state == duck.State.JUICE, "flip owns state")
 		240:   # ~2 s later — flip takes ~1.3 s
 			_check(not duck.juice_busy, "flip finished")
-			_check(absf(duck.pivot.rotation) < 0.01, "rotation reset after flip")
+			_check(absf(duck.sprite.rotation) < 0.01, "rotation reset after flip")
 			duck.pet()
 		248:
 			_check(duck.fx.get_child_count() > 0, "hearts spawned")
