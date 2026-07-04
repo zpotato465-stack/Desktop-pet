@@ -9,7 +9,7 @@ extends Node2D
 enum State { IDLE, WALK, SLEEP, DRAG, FALL, JUICE }
 
 const DUCK_H := 120.0            # sprite height at scale 1
-const FEET_Y := 330.0            # duck feet baseline inside the window
+const FEET_Y := 344.0            # duck feet baseline inside the window
 const CENTER_X := 160.0
 const GRAVITY := 2600.0
 const BOUNCE_DAMP := 0.42
@@ -635,7 +635,7 @@ func _input(event: InputEvent) -> void:
 					_on_click()
 				pressing = false
 				dragging = false
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed and not dragging:
 			menu.popup(Rect2i(DisplayServer.mouse_get_position(), Vector2i.ZERO))
 	elif event is InputEventMouseMotion and pressing:
 		if not dragging and (event.position - press_pos).length() > 6.0:

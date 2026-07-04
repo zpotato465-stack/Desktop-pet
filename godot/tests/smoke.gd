@@ -6,13 +6,14 @@ extends SceneTree
 var duck: Node2D
 var frame := 0
 var failures := 0
+var load_failed := false
 
 func _initialize() -> void:
 	print("[smoke] loading main.tscn ...")
 	var scene: PackedScene = load("res://main.tscn")
 	if scene == null:
-		_fail("main.tscn failed to load")
-		quit(1)
+		printerr("[smoke] FAIL: main.tscn failed to load")
+		load_failed = true
 		return
 	duck = scene.instantiate()
 	root.add_child(duck)
@@ -26,6 +27,11 @@ func _check(cond: bool, what: String) -> void:
 		printerr("[smoke] FAIL: " + what)
 
 func _process(_delta: float) -> bool:
+	if load_failed or duck == null:
+		printerr("[smoke] aborting: no duck")
+		quit(1)
+		return true
+
 	frame += 1
 	match frame:
 		5:
@@ -43,42 +49,41 @@ func _process(_delta: float) -> bool:
 			duck._stop_walk()
 		20:
 			duck.do_hop()
-		25:
+		26:
 			_check(duck.juice_busy, "hop tween running")
-		70:
+		110:   # ~1.5 s later — hop takes ~0.9 s
 			_check(not duck.juice_busy, "hop finished and released juice lock")
 			duck.do_flip()
-		75:
+		116:
 			_check(duck.state == duck.State.JUICE, "flip owns state")
-		160:
+		240:   # ~2 s later — flip takes ~1.3 s
 			_check(not duck.juice_busy, "flip finished")
 			_check(absf(duck.pivot.rotation) < 0.01, "rotation reset after flip")
 			duck.pet()
-		165:
+		248:
 			_check(duck.fx.get_child_count() > 0, "hearts spawned")
-		230:
+		320:
 			duck.go_sleep()
-		240:
+		330:
 			_check(duck.state == duck.State.SLEEP, "sleep state entered")
 			duck.wake()
-		245:
+		336:
 			_check(duck.state != duck.State.SLEEP, "woke up")
-		250:
+		400:
 			duck._say("Test bubble QUACK")
-			_check(true, "say() did not crash")
-		255:
-			_check(duck.bubble.visible, "bubble visible")
-		260:
-			# throw physics simulation
+		406:
+			_check(duck.bubble.visible, "bubble visible after say()")
+		420:
+			duck._kill_air()
 			duck.state = duck.State.FALL
 			duck.vel = Vector2(400, -300)
 			duck.ang_vel = 3.0
-		380:
+		560:   # >2 s of physics — plenty to land and settle
 			_check(duck.state == duck.State.IDLE, "fall settled back to idle")
 			duck._save_settings()
 			duck._load_settings()
 			_check(true, "settings round-trip")
-		400:
+		580:
 			if failures == 0:
 				print("[smoke] ALL CHECKS PASSED")
 				quit(0)
@@ -86,7 +91,3 @@ func _process(_delta: float) -> bool:
 				printerr("[smoke] %d FAILURES" % failures)
 				quit(1)
 	return false
-
-func _fail(msg: String) -> void:
-	failures += 1
-	printerr("[smoke] FAIL: " + msg)
