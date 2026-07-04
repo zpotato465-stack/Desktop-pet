@@ -4,15 +4,21 @@ The **animation-first** duck. No AI, no API keys — a Godot 4.3 rewrite focused
 making the duck feel *alive*:
 
 - **Squash & stretch** on every hop, landing, and throw impact
-- **Waddle** — the duck rocks side to side in sync with its footsteps
-- **Random tricks** — in-place hops and full **backflips** with landing dust
+- **Waddle** — the duck bounces vertically, rocks, and leans into its walk
+  in sync with its footsteps, kicking up dust on each footfall
+- **Rich idle life** — weight-shifting sway, **feather shakes**, ground
+  **pecks**, big yawny **stretches**, look-arounds and preening
+- **Tricks** — in-place hops and full **backflips** with sparkle + dust landings
 - **Throw physics** — grab the duck and yeet it: it tumbles with angular
-  velocity, bounces off screen edges and the "floor" with damped impacts
+  velocity, bounces off screen edges and the "floor" with damped impacts,
+  and sees stars on a hard whack
+- **Emotes** — pops `!`, `?`, `~` and more above its head to react
 - **Petting** (double-click) — pixel-heart burst + wiggle of joy
+- **Cursor chase** (optional) — waddles over to investigate your pointer
 - **Sleeping** — dims and floats pixel Z's after ~90s idle
-- Typewriter **speech bubbles** with canned quack wisdom
+- Typewriter **speech bubbles** that pop out of the duck's head
 - **Settings** (right-click → Settings): duck size, walk pace (incl. ZOOMIES),
-  throw physics on/off, chattiness — persisted between runs
+  throw physics, chattiness, cursor-follow — persisted between runs
 
 Transparent, borderless, always-on-top window; clicks outside the duck's body
 pass through to whatever is underneath.

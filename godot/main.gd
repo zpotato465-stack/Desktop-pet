@@ -82,9 +82,17 @@ var cfg_size := 1                 # 0 small 1 medium 2 large
 var cfg_speed := 1                # 0 chill 1 normal 2 zoomies
 var cfg_gravity := true
 var cfg_chatty := true
+var cfg_follow := false           # walk toward the cursor now and then
+
+# animation extras
+var step_phase := 0.0             # accumulates footsteps for step dust
+var last_step := 0.0
+var turn_pop := 0.0               # brief squash after reversing direction
+var lean := 0.0                   # smoothed body lean
 
 var heart_tex: ImageTexture
 var dust_tex: ImageTexture
+var star_tex: ImageTexture
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -191,6 +199,7 @@ func _build_menu() -> void:
 	settings_menu.add_separator()
 	settings_menu.add_check_item("Throw physics", 30)
 	settings_menu.add_check_item("Chatty duck", 31)
+	settings_menu.add_check_item("Follow my cursor", 32)
 	settings_menu.id_pressed.connect(_on_settings_id)
 	menu.add_child(settings_menu)
 	menu.add_submenu_item("Settings", "SettingsSub")
@@ -216,6 +225,13 @@ func _build_textures() -> void:
 		"XXXX",
 		" XX ",
 	], Color(0.82, 0.78, 0.70))
+	star_tex = _pixel_tex([
+		"  X  ",
+		"  X  ",
+		"XXXXX",
+		"  X  ",
+		"  X  ",
+	], Color(1.0, 0.85, 0.35))
 
 func _pixel_tex(rows: Array, col: Color) -> ImageTexture:
 	var h := rows.size()
@@ -237,6 +253,7 @@ func _load_settings() -> void:
 		cfg_speed = cf.get_value("duck", "speed", 1)
 		cfg_gravity = cf.get_value("duck", "gravity", true)
 		cfg_chatty = cf.get_value("duck", "chatty", true)
+		cfg_follow = cf.get_value("duck", "follow", false)
 
 func _save_settings() -> void:
 	var cf := ConfigFile.new()
@@ -244,6 +261,7 @@ func _save_settings() -> void:
 	cf.set_value("duck", "speed", cfg_speed)
 	cf.set_value("duck", "gravity", cfg_gravity)
 	cf.set_value("duck", "chatty", cfg_chatty)
+	cf.set_value("duck", "follow", cfg_follow)
 	cf.save("user://duck.cfg")
 
 func _base_scale() -> float:
@@ -277,6 +295,7 @@ func _sync_menu_checks() -> void:
 		settings_menu.set_item_checked(settings_menu.get_item_index(id), id - 20 == cfg_speed)
 	settings_menu.set_item_checked(settings_menu.get_item_index(30), cfg_gravity)
 	settings_menu.set_item_checked(settings_menu.get_item_index(31), cfg_chatty)
+	settings_menu.set_item_checked(settings_menu.get_item_index(32), cfg_follow)
 
 func _on_settings_id(id: int) -> void:
 	match id:
@@ -284,6 +303,11 @@ func _on_settings_id(id: int) -> void:
 		20, 21, 22: cfg_speed = id - 20
 		30: cfg_gravity = not cfg_gravity
 		31: cfg_chatty = not cfg_chatty
+		32:
+			cfg_follow = not cfg_follow
+			if cfg_follow:
+				emote("!")
+				_say("Ooh, a cursor to chase!")
 	_sync_menu_checks()
 	_save_settings()
 
@@ -292,7 +316,12 @@ func _on_menu_id(id: int) -> void:
 		1: pet()
 		2:
 			if state == State.SLEEP: wake()
-			else: do_flip()
+			else:
+				match randi() % 4:
+					0: do_flip()
+					1: do_shake()
+					2: do_stretch()
+					_: do_hop(40.0)
 		3: _say(QUACK_LINES[randi() % QUACK_LINES.size()])
 		4:
 			if state == State.SLEEP: wake()
@@ -345,28 +374,45 @@ func _tick_idle(delta: float) -> void:
 	quack_cd -= delta
 
 	if not juice_busy:
-		# breathing
+		# breathing + smooth settle back to rest after walking
 		var b := _base_scale()
 		var s := 0.015 * sin(t * 2.2)
+		# weight shift: subtle side-to-side sway so idle never looks frozen
+		var sway := 0.02 * sin(t * 0.9)
 		pivot.scale = Vector2(b * (1.0 - s), b * (1.0 + s))
-		pivot.rotation = 0.0
+		pivot.rotation = lerpf(pivot.rotation, sway, 6.0 * delta)
+		pivot.position.y = lerpf(pivot.position.y, FEET_Y, 12.0 * delta)
+		pivot.position.x = lerpf(pivot.position.x, CENTER_X, 8.0 * delta)
 
 	if idle_for > 90.0:
 		go_sleep()
 		return
+
+	# cursor chase: if the pointer strays far, waddle over to investigate
+	if cfg_follow and behavior_cd <= 1.0:
+		var mx := float(DisplayServer.mouse_get_position().x)
+		var duck_cx := fpos.x + CENTER_X
+		if absf(mx - duck_cx) > 140.0:
+			_start_walk(1 if mx > duck_cx else -1)
+			walk_time_left = randf_range(0.6, 1.4)
+			emote("!")
+			return
 
 	if cfg_chatty and quack_cd <= 0.0:
 		quack_cd = randf_range(25.0, 55.0)
 		_say(QUACK_LINES[randi() % QUACK_LINES.size()])
 
 	if behavior_cd <= 0.0:
-		behavior_cd = randf_range(2.5, 6.0)
+		behavior_cd = randf_range(2.2, 5.5)
 		var roll := randf()
-		if roll < 0.38: _start_walk()
-		elif roll < 0.52: do_hop()
-		elif roll < 0.59: do_flip()
-		elif roll < 0.76: _look_around()
-		elif roll < 0.88: _preen()
+		if roll < 0.30: _start_walk()
+		elif roll < 0.42: do_hop()
+		elif roll < 0.49: do_flip()
+		elif roll < 0.60: do_shake()
+		elif roll < 0.71: do_peck()
+		elif roll < 0.80: do_stretch()
+		elif roll < 0.88: _look_around()
+		elif roll < 0.95: _preen()
 		# else: just vibe
 
 func _tick_walk(delta: float) -> void:
@@ -377,19 +423,44 @@ func _tick_walk(delta: float) -> void:
 	var min_x := float(usable.position.x)
 	var max_x := float(usable.position.x + usable.size.x - get_window().size.x)
 	if fpos.x <= min_x or fpos.x >= max_x:
-		walk_dir = -walk_dir
-		sprite.flip_h = walk_dir > 0
+		_turn_around()
 	_apply_window_pos()
 
+	if turn_pop > 0.0:
+		turn_pop = maxf(0.0, turn_pop - delta * 4.0)
+
 	if not juice_busy:
-		# waddle: rock side to side + tiny bounce, synced to footsteps
 		var b := _base_scale()
-		var wt := t * (7.0 + speed * 0.05)
-		pivot.rotation = sin(wt) * 0.085
-		pivot.scale = Vector2(b, b * (1.0 + 0.02 * absf(sin(wt))))
+		# stride clock — everything below syncs to this so feet, bounce and
+		# roll all agree
+		var stride := 7.0 + speed * 0.045
+		step_phase += delta * stride
+		var s := sin(step_phase)
+		var bounce := absf(sin(step_phase))          # 0..1, two peaks per cycle
+
+		# waddle roll on the feet, forward lean into the walk direction
+		lean = lerpf(lean, walk_dir * 0.11, 8.0 * delta)
+		pivot.rotation = s * 0.10 + lean
+		# vertical hop of the body + squash/stretch: tall at apex, squashed on
+		# the plant; extra squish right after a turn
+		var squish := 0.06 * (1.0 - bounce) + turn_pop * 0.18
+		pivot.position.y = FEET_Y - bounce * (5.5 + speed * 0.02)
+		pivot.scale = Vector2(b * (1.0 + squish * 0.6), b * (1.0 - squish))
+
+		# kick up dust each time a foot plants (bounce hits ~0)
+		if bounce < 0.12 and step_phase - last_step > 1.5:
+			last_step = step_phase
+			_spawn_dust(1)
 
 	if walk_time_left <= 0.0:
 		_stop_walk()
+
+func _turn_around() -> void:
+	walk_dir = -walk_dir
+	sprite.flip_h = walk_dir > 0
+	turn_pop = 1.0
+	lean = 0.0
+	_spawn_dust(2)
 
 func _tick_sleep(delta: float) -> void:
 	z_cd -= delta
@@ -423,7 +494,10 @@ func _tick_drag(delta: float) -> void:
 func _tick_fall(delta: float) -> void:
 	vel.y += GRAVITY * delta
 	fpos += vel * delta
-	sprite.rotation += ang_vel * delta   # tumble around the body's center
+	# Tumble around the body's center; faster throws spin faster. (A positional
+	# trail can't show here — the duck moves by moving its window, so in-window
+	# after-images would just overlap it. The spin is what sells the throw.)
+	sprite.rotation += ang_vel * delta
 
 	var w := get_window()
 	var min_x := float(usable.position.x)
@@ -448,6 +522,8 @@ func _tick_fall(delta: float) -> void:
 			ang_vel *= 0.6
 			_impact_squash(impact)
 			_spawn_dust(6)
+			if impact > 900.0:
+				_spawn_stars(5)          # big whack — see stars
 		else:
 			_land_settle()
 	_apply_window_pos()
@@ -478,18 +554,23 @@ func _impact_squash(impact: float) -> void:
 
 # ── Behaviors ────────────────────────────────────────────────────────────────
 
-func _start_walk() -> void:
+func _start_walk(dir := 0) -> void:
 	state = State.WALK
-	walk_dir = [-1, 1][randi() % 2]
+	walk_dir = dir if dir != 0 else [-1, 1][randi() % 2]
 	sprite.flip_h = walk_dir > 0
 	walk_time_left = randf_range(2.0, 6.0)
+	step_phase = 0.0
+	last_step = 0.0
+	lean = 0.0
+	turn_pop = 0.6          # little "here we go" push-off squash
 	sprite.play("walk")
 
 func _stop_walk() -> void:
 	state = State.IDLE
 	idle_for = 0.0
+	lean = 0.0
 	sprite.play("idle")
-	pivot.rotation = 0.0
+	# _tick_idle smoothly settles position/rotation back to rest.
 
 func go_sleep() -> void:
 	_kill_air()
@@ -555,6 +636,7 @@ func do_flip() -> void:
 	air_tween.tween_callback(func():
 		sprite.rotation = 0.0
 		_spawn_dust(5)
+		_spawn_stars(6)
 	)
 	air_tween.tween_property(pivot, "scale", Vector2(b * 1.24, b * 0.76), 0.07)
 	air_tween.tween_property(pivot, "scale", Vector2(b, b), 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
@@ -587,8 +669,70 @@ func pet() -> void:
 				state = prev_state if prev_state != State.JUICE else State.IDLE
 		)
 
+func _juice_enter() -> int:
+	juice_busy = true
+	var prev := state
+	state = State.JUICE
+	return prev if prev != State.JUICE else State.IDLE
+
+func _juice_exit(prev: int) -> void:
+	juice_busy = false
+	if state == State.JUICE:
+		state = prev
+
+func do_shake() -> void:
+	## Fluff the feathers: fast rotational shimmy + a puff of down.
+	if juice_busy or state in [State.DRAG, State.FALL]:
+		return
+	var prev := _juice_enter()
+	var b := _base_scale()
+	_spawn_dust(4)
+	air_tween = create_tween()
+	air_tween.tween_property(pivot, "scale", Vector2(b * 1.12, b * 1.12), 0.08)
+	for i in range(6):
+		var a := 0.16 * (1.0 if i % 2 == 0 else -1.0) * (1.0 - i / 8.0)
+		air_tween.tween_property(pivot, "rotation", a, 0.045)
+	air_tween.tween_property(pivot, "rotation", 0.0, 0.05)
+	air_tween.parallel().tween_property(pivot, "scale", Vector2(b, b), 0.12)
+	air_tween.tween_callback(func(): _juice_exit(prev))
+
+func do_peck() -> void:
+	## Peck at the ground a couple of times (lean down-forward and back).
+	if juice_busy or state in [State.DRAG, State.FALL]:
+		return
+	var prev := _juice_enter()
+	var dir := -1.0 if sprite.flip_h else 1.0
+	air_tween = create_tween()
+	for i in range(2):
+		air_tween.tween_property(sprite, "rotation", dir * 0.5, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		air_tween.parallel().tween_property(pivot, "position:y", FEET_Y + 6.0, 0.12)
+		air_tween.tween_property(sprite, "rotation", 0.0, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		air_tween.parallel().tween_property(pivot, "position:y", FEET_Y, 0.14)
+	air_tween.tween_callback(func():
+		_juice_exit(prev)
+		if randf() < 0.4: emote(".")
+	)
+
+func do_stretch() -> void:
+	## A big yawny stretch — rise up tall, hold, settle. Sparkle on top.
+	if juice_busy or state in [State.DRAG, State.FALL]:
+		return
+	var prev := _juice_enter()
+	var b := _base_scale()
+	emote("~")
+	air_tween = create_tween()
+	air_tween.tween_property(pivot, "scale", Vector2(b * 1.1, b * 0.9), 0.14)
+	air_tween.tween_property(pivot, "scale", Vector2(b * 0.86, b * 1.22), 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	air_tween.parallel().tween_property(pivot, "position:y", FEET_Y - 10.0, 0.5)
+	air_tween.tween_interval(0.25)
+	air_tween.tween_callback(func(): _spawn_stars(3))
+	air_tween.tween_property(pivot, "scale", Vector2(b, b), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	air_tween.parallel().tween_property(pivot, "position:y", FEET_Y, 0.35)
+	air_tween.tween_callback(func(): _juice_exit(prev))
+
 func _look_around() -> void:
 	sprite.flip_h = not sprite.flip_h
+	emote("?")
 	var tw := create_tween()
 	tw.tween_interval(randf_range(0.6, 1.4))
 	tw.tween_callback(func():
@@ -649,6 +793,7 @@ func _input(event: InputEvent) -> void:
 			_begin_drag()
 
 func _on_click() -> void:
+	emote("!")
 	do_hop(24.0)
 	if randf() < 0.65:
 		_say(QUACK_LINES[randi() % QUACK_LINES.size()])
@@ -748,6 +893,46 @@ func _spawn_dust(n: int) -> void:
 		tw.tween_property(d, "scale", d.scale * 0.4, 0.45)
 		tw.chain().tween_callback(d.queue_free)
 
+func _spawn_stars(n: int) -> void:
+	## A celebratory sparkle burst (used on stuck flip landings & stretches).
+	for i in range(n):
+		var s := Sprite2D.new()
+		s.texture = star_tex
+		s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		s.position = Vector2(CENTER_X, _duck_top() + 30)
+		s.scale = Vector2.ONE * randf_range(1.5, 2.6)
+		s.rotation = randf_range(0, TAU)
+		fx.add_child(s)
+		var ang := TAU * i / n + randf_range(-0.3, 0.3)
+		var dist := randf_range(28, 52)
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(s, "position", s.position + Vector2(cos(ang), sin(ang) * 0.7) * dist, 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(s, "rotation", s.rotation + PI, 0.5)
+		tw.tween_property(s, "modulate:a", 0.0, 0.5)
+		tw.tween_property(s, "scale", s.scale * 0.3, 0.5)
+		tw.chain().tween_callback(s.queue_free)
+
+func emote(symbol: String) -> void:
+	## A little symbol that pops above the duck's head and floats off.
+	var e := Label.new()
+	e.text = symbol
+	e.add_theme_font_size_override("font_size", 26)
+	e.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	e.add_theme_color_override("font_outline_color", Color(0.3, 0.2, 0.0))
+	e.add_theme_constant_override("outline_size", 4)
+	e.position = Vector2(CENTER_X + 10, _duck_top() - 6)
+	e.pivot_offset = Vector2(8, 14)
+	e.scale = Vector2.ZERO
+	fx.add_child(e)
+	var tw := create_tween()
+	tw.tween_property(e, "scale", Vector2(1.3, 1.3), 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(e, "scale", Vector2(1.0, 1.0), 0.08)
+	tw.tween_interval(0.5)
+	tw.parallel().tween_property(e, "position:y", e.position.y - 22, 0.6)
+	tw.tween_property(e, "modulate:a", 0.0, 0.3)
+	tw.tween_callback(e.queue_free)
+
 # ── Speech bubble ────────────────────────────────────────────────────────────
 
 func _say(text: String) -> void:
@@ -759,11 +944,15 @@ func _say(text: String) -> void:
 	bubble.show()
 	bubble_visible = true
 	bubble.modulate.a = 0.0
+	# pop-in: scale from the tail (bottom-centre) so it grows out of the duck
+	bubble.pivot_offset = Vector2(bubble.size.x * 0.5, bubble.size.y)
+	bubble.scale = Vector2(0.6, 0.6)
 	bubble_label.visible_ratio = 0.0
 	_layout_bubble()
 
 	bubble_tween = create_tween()
-	bubble_tween.tween_property(bubble, "modulate:a", 1.0, 0.15)
+	bubble_tween.tween_property(bubble, "modulate:a", 1.0, 0.12)
+	bubble_tween.parallel().tween_property(bubble, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	bubble_tween.parallel().tween_property(bubble_label, "visible_ratio", 1.0, minf(0.9, text.length() * 0.025))
 	bubble_tween.tween_interval(2.2 + text.length() * 0.045)
 	bubble_tween.tween_property(bubble, "modulate:a", 0.0, 0.3)

@@ -62,28 +62,45 @@ func _process(_delta: float) -> bool:
 			duck.pet()
 		248:
 			_check(duck.fx.get_child_count() > 0, "hearts spawned")
-		320:
+		255:
+			duck.emote("!")
+			_check(true, "emote() did not crash")
+		262:
+			duck.do_shake()
+		268:
+			_check(duck.juice_busy, "shake owns the duck")
+		300:
+			_check(not duck.juice_busy, "shake finished")
+			duck.do_peck()
+		340:
+			_check(not duck.juice_busy, "peck finished")
+			duck.do_stretch()
+		420:
+			_check(not duck.juice_busy, "stretch finished")
+			_check(absf(duck.pivot.position.y - duck.FEET_Y) < 1.0, "stretch returned to baseline")
 			duck.go_sleep()
-		330:
+		430:
 			_check(duck.state == duck.State.SLEEP, "sleep state entered")
 			duck.wake()
-		336:
+		436:
 			_check(duck.state != duck.State.SLEEP, "woke up")
-		400:
+		450:
 			duck._say("Test bubble QUACK")
-		406:
+		456:
 			_check(duck.bubble.visible, "bubble visible after say()")
-		420:
+		470:
 			duck._kill_air()
 			duck.state = duck.State.FALL
 			duck.vel = Vector2(400, -300)
 			duck.ang_vel = 3.0
-		560:   # >2 s of physics — plenty to land and settle
+		610:   # >2 s of physics — plenty to land and settle
 			_check(duck.state == duck.State.IDLE, "fall settled back to idle")
+			duck.cfg_follow = true
 			duck._save_settings()
+			duck.cfg_follow = false
 			duck._load_settings()
-			_check(true, "settings round-trip")
-		580:
+			_check(duck.cfg_follow == true, "settings round-trip (follow persisted)")
+		630:
 			if failures == 0:
 				print("[smoke] ALL CHECKS PASSED")
 				quit(0)

@@ -36,18 +36,31 @@ func _process(_delta: float) -> bool:
 		95:
 			duck._start_walk()
 			duck.sprite.flip_h = false
-		110:
+		112:
 			_cap("walk")
 			duck._stop_walk()
-		120:
+		122:
 			duck.do_flip()
-		138:
+		140:
 			_cap("flip_mid")
 		200:
-			duck.go_sleep()
-		255:
-			_cap("sleep")
+			duck.do_stretch()
+		228:
+			_cap("stretch")
 		270:
+			duck.do_shake()
+			duck.emote("!")
+		276:
+			_cap("shake")
+		320:
+			duck.do_peck()
+		330:
+			_cap("peck")
+		380:
+			duck.go_sleep()
+		435:
+			_cap("sleep")
+		450:
 			print("[shots] DONE")
 			quit(0)
 	return false
