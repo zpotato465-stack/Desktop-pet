@@ -26,20 +26,36 @@ SEARCH_ROOTS['linux'] = SEARCH_ROOTS['darwin']
 
 def find_file(filename: str,
               progress_cb: Callable[[str], None] | None = None) -> str | None:
-    """Search for a file, checking common locations first."""
-    filename_lower = filename.lower()
-    roots = SEARCH_ROOTS.get(sys.platform, SEARCH_ROOTS['linux'])
+    """Search common locations first, then home.
+
+    A query without an extension ("report") matches any file whose stem is
+    that name ("report.pdf", "report.docx", ...).
+    """
+    target = filename.lower()
+    has_ext = '.' in target
+    roots = [r for r in SEARCH_ROOTS.get(sys.platform, SEARCH_ROOTS['linux'])
+             if os.path.isdir(r)]
+    scanned: set[str] = set()
 
     for root in roots:
-        if not os.path.isdir(root):
+        root_abs = os.path.abspath(root)
+        if root_abs in scanned:
             continue
+        scanned.add(root_abs)
         try:
             for dirpath, dirnames, filenames in os.walk(root):
-                # Skip hidden dirs and common noise
-                dirnames[:] = [d for d in dirnames
-                               if not d.startswith('.') and d not in ('node_modules', '__pycache__', '.git')]
+                # Skip hidden dirs, common noise, and roots already scanned
+                # (so the final home sweep doesn't redo Desktop/Documents/…).
+                dirnames[:] = [
+                    d for d in dirnames
+                    if not d.startswith('.')
+                    and d not in ('node_modules', '__pycache__', '.git',
+                                  'Library', 'AppData')
+                    and os.path.join(dirpath, d) not in scanned
+                ]
                 for fname in filenames:
-                    if fname.lower() == filename_lower:
+                    f = fname.lower()
+                    if f == target or (not has_ext and os.path.splitext(f)[0] == target):
                         found = os.path.join(dirpath, fname)
                         if progress_cb:
                             progress_cb(found)

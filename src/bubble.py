@@ -86,8 +86,11 @@ class SpeechBubble(QWidget):
         duck_global = self.duck.mapToGlobal(self.duck.rect().topLeft())
         duck_cx = duck_global.x() + self.duck.width() // 2
 
+        # BUBBLE_ANCHOR lets the duck report where its head actually is
+        # (its window has transparent padding above the sprite).
+        anchor = getattr(self.duck, 'BUBBLE_ANCHOR', 0)
         bx = duck_cx - self.width() // 2
-        by = duck_global.y() - self.height() + MARGIN
+        by = duck_global.y() + anchor - self.height() + MARGIN
 
         screen = QApplication.primaryScreen().geometry()
         bx = max(6, min(bx, screen.width() - self.width() - 6))

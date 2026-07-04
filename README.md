@@ -58,7 +58,10 @@ The finished app lands in `dist/`.
 - **AI chat** — click the duck to open a chat window (powered by Gemini).
 - **Sees your screen** — every so often it screenshots your desktop and makes a
   funny comment about what you're doing.
-- **Finds files** — tell it *"find me a file called report.pdf"* and it:
+- **Pet the duck** ❤️ — double-click it (or right-click → Pet the duck) for
+  floating hearts and affectionate quacking.
+- **Finds files** — tell it *"find me a file called report.pdf"* (or just
+  *"report"* — no extension needed) and it:
   1. waddles in place,
   2. **starts playing the theme music** 🎵 (the
      [YouTube clip](https://youtu.be/lV28xl-YKw4) — it auto-plays in your browser,
@@ -71,7 +74,8 @@ The finished app lands in `dist/`.
 | Action | Effect |
 |--------|--------|
 | **Left-click** the duck | Open chat |
-| **Right-click** the duck | Context menu (chat, find file, peek, settings, quit) |
+| **Double-click** the duck | Pet it ❤️ |
+| **Right-click** the duck | Context menu (chat, find file, peek, pet, settings, quit) |
 | **Drag** the duck | Move it anywhere |
 | **System tray** icon | Same menu; double-click to chat |
 

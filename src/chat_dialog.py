@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QPoint, QSize
 from PySide6.QtGui import QColor, QPixmap, QPainter, QFont
 
-from main import get_resource_path
+from paths import get_resource_path
 
 
 def _load_avatar(size: int) -> QPixmap:
@@ -118,6 +118,10 @@ QPushButton#close:hover { background-color: #45343a; color: #f38ba8; }
 
 class ChatDialog(QDialog):
     message_sent = Signal(str, str)
+    # Bridges the Gemini worker thread back onto the GUI thread. Emitting a
+    # signal is thread-safe; calling QTimer.singleShot from a plain Python
+    # thread is NOT (no event loop there), so responses could vanish.
+    _response_ready = Signal(str, str)
 
     def __init__(self, gemini_client, parent=None):
         super().__init__(parent)
@@ -125,6 +129,7 @@ class ChatDialog(QDialog):
         self._thinking = False
         self._typing = None
         self._drag_pos = None
+        self._response_ready.connect(self._handle_response)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
@@ -320,7 +325,7 @@ class ChatDialog(QDialog):
             response = self.gemini.chat(user_text)
         except Exception as e:
             response = f"QUACK! Something went wrong: {str(e)[:80]}"
-        QTimer.singleShot(0, lambda: self._handle_response(user_text, response))
+        self._response_ready.emit(user_text, response)
 
     def _handle_response(self, user_text: str, response: str):
         self._remove_typing()
